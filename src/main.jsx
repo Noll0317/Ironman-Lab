@@ -180,28 +180,79 @@ function RaceSimulations({workouts}){
   return <main><section className="panel"><h2><TestTube2/> Race Simulation Tracker</h2><p className="muted">Mark the key Maryland rehearsal days: long bike, brick run, hot sessions, nutrition tests, and full race-practice fueling.</p><div className="predictGrid"><div className="totalPredict"><span>Simulation Score</span><strong>{score}</strong><small>0-100 readiness signal</small></div><div><span>Long Bikes</span><strong>{longBikes}</strong><small>2h+ logged</small></div><div><span>Long Runs</span><strong>{longRuns}</strong><small>75m+ logged</small></div><div><span>Hot Sessions</span><strong>{hot}</strong><small>80°F+ practice</small></div></div><label className="wide analysisNotes">Simulation note<textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="Example: Maryland Sim #1 — 3hr bike + 30min run, 85g carbs/hr, 1100mg sodium/hr, gut 9, no cramps."/></label><button className="save" onClick={saveSim}><Save size={18}/> Save Simulation Note</button></section><section className="panel"><h2>Saved Sim Notes</h2>{sims.length?sims.map(s=><div className="experiment" key={s.id}><small>{s.date}</small><p>{s.note}</p></div>):<p className="muted">No simulation notes yet.</p>}</section></main>
 }
 
+function fileToDataUrl(file){
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onload=()=>resolve(reader.result);
+    reader.onerror=reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function safeJson(text){
+  if(!text) return null;
+  try{return JSON.parse(text)}catch{}
+  const match=text.match(/\{[\s\S]*\}/);
+  if(match){ try{return JSON.parse(match[0])}catch{} }
+  return null;
+}
+
 function ScreenshotAnalysis(){
   const [files,setFiles]=useState([]);
   const [notes,setNotes]=useState('');
   const [kind,setKind]=useState('Bike');
+  const [analyzing,setAnalyzing]=useState(false);
+  const [analysis,setAnalysis]=useState('');
+  const [fields,setFields]=useState(null);
   const previews=files.map(f=>({name:f.name,url:URL.createObjectURL(f)}));
   const prompt=`Analyze these Garmin ${kind} screenshots for Ironman Lab. Extract any visible data: distance, duration, pace/speed, average/max HR, HR zones, elevation, temperature, calories, training effect, laps/splits, cadence, and notes. Then give me: 1) workout summary, 2) pacing/HR drift analysis, 3) heat impact, 4) fueling/hydration implications, 5) gut/cramp risk, 6) what to adjust next workout. Athlete notes: ${notes||'none provided'}`;
   async function copyPrompt(){ try{ await navigator.clipboard.writeText(prompt); alert('AI analysis prompt copied. Drop the screenshots into ChatGPT and paste this prompt.'); }catch{ alert(prompt); } }
+  async function analyzeWithAI(){
+    if(!files.length){ alert('Add at least one Garmin screenshot first.'); return; }
+    setAnalyzing(true); setAnalysis(''); setFields(null);
+    try{
+      const images=await Promise.all(files.slice(0,8).map(async f=>({name:f.name,type:f.type,dataUrl:await fileToDataUrl(f)})));
+      const res=await fetch('/.netlify/functions/analyze-garmin',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({kind,notes,images})
+      });
+      const data=await res.json().catch(()=>({}));
+      if(!res.ok) throw new Error(data.error || `AI request failed (${res.status})`);
+      const text=data.analysis || data.text || '';
+      setAnalysis(text);
+      setFields(data.fields || safeJson(text)?.fields || safeJson(text));
+    }catch(err){
+      alert(err.message || 'AI analysis failed');
+    }finally{
+      setAnalyzing(false);
+    }
+  }
+  function applyToLog(){
+    if(!fields){ alert('No extracted fields found yet.'); return; }
+    const next={...form};
+    alert('Next upgrade will auto-fill Log Actual. For now, copy the extracted fields below into Log Actual.');
+  }
   return <main>
     <section className="panel">
       <h2><UploadCloud/> Garmin Screenshot AI Analysis</h2>
-      <p className="muted">This is the drop zone/workflow. Browser-only apps cannot safely run the real AI key yet, so V1.4 generates the exact analysis prompt and preview set. Next backend upgrade can make it fully automatic.</p>
+      <p className="muted">Upload Garmin screenshots, then run AI analysis through your Netlify backend. Your OpenAI key stays private in Netlify.</p>
       <label>Workout type<select className="inlineSelect" value={kind} onChange={e=>setKind(e.target.value)}>{Object.keys(TYPES).map(t=><option key={t}>{t}</option>)}</select></label>
       <label className="dropZone">
         <UploadCloud size={34}/>
         <strong>Choose Garmin screenshots</strong>
         <span>Overview, charts, laps, HR zones, pace, temp, cadence, training effect</span>
-        <input type="file" multiple accept="image/*" onChange={e=>setFiles(Array.from(e.target.files||[]))}/>
+        <input type="file" multiple accept="image/*" onChange={e=>{setFiles(Array.from(e.target.files||[])); setAnalysis(''); setFields(null);}}/>
       </label>
       <label className="wide analysisNotes">Workout notes / what you want analyzed<textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Example: Long brick. Felt hot. Gut okay until mile 8. Check HR drift and sodium/fluid targets."/></label>
-      <button className="save" onClick={copyPrompt}><ClipboardList size={18}/> Copy AI Analysis Prompt</button>
+      <div className="aiActions">
+        <button className="save" onClick={analyzeWithAI} disabled={analyzing}>{analyzing ? 'Analyzing...' : 'Run AI Analysis'}</button>
+        <button onClick={copyPrompt}><ClipboardList size={18}/> Copy Prompt Backup</button>
+      </div>
       {files.length>0 && <div className="previewGrid">{previews.map(p=><div className="preview" key={p.name}><img src={p.url}/><span><ImageIcon size={14}/> {p.name}</span></div>)}</div>}
-      <div className="aiBox"><h3>Prompt Preview</h3><p>{prompt}</p></div>
+      {fields && <div className="aiBox"><h3>Extracted Fields</h3><pre>{JSON.stringify(fields,null,2)}</pre></div>}
+      {analysis && <div className="aiBox"><h3>AI Analysis</h3><p>{analysis}</p></div>}
+      <div className="aiBox"><h3>Prompt Backup</h3><p>{prompt}</p></div>
     </section>
   </main>
 }
