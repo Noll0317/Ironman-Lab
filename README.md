@@ -1,15 +1,18 @@
-# Ironman Lab
+# Ironman Lab V1.4
 
-Maryland Mission Control: planned workout calendar, workout log, readiness, fueling, heat, sweat-rate, cramp and gut tracking.
+Upload only these files/folders to GitHub:
+- src
+- index.html
+- package.json
+- package-lock.json
+- README.md
+- supabase.sql / supabase_v1_1.sql if needed
 
-## Deploy
-Base directory: `ironman-lab`  
-Build command: `npm run build`  
-Publish directory: `dist`
+Do NOT upload node_modules or dist.
 
-## Supabase upgrade
-Run `supabase_v1_1.sql` in Supabase SQL editor.
-
-## Netlify environment variables
-- `VITE_SUPABASE_URL` = your root Supabase project URL, example `https://xxxxx.supabase.co`
-- `VITE_SUPABASE_ANON_KEY` = your anon public key
+V1.4 adds:
+- quick planned workout templates
+- standalone sweat-rate calculator
+- race simulation tracker
+- improved Garmin screenshot workflow with copyable AI analysis prompt
+- calendar/workout flow from V1.3
